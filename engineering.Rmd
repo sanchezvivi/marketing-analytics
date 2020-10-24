@@ -1,9 +1,22 @@
 ---
 title: "Pesquisa Engenharia"
+subtitle: "Marketing Analytics"
 author: "Viviane Sanchez"
+institution: "Insper - PADS"
 date: "10/23/2020"
 output: html_document
 ---
+# Introdução
+
+## Objetivo
+
+Avaliar o posicionamento da Faculdade de Engenharia do Insper a partir da pesquisa realizada.
+
+Avalie o posicionamento da Faculdade de Engenharia do Insper, incluindo:
+1. Elementos centrais da proposta de valor que são reconhecidos pelos consumidores.
+2. Quais são os concorrentes.
+3. Como os concorrentes são percebidos (segundo os atributos).
+4. Quais os territórios de cada faculdade.
 
 ```{r setup, include=FALSE}
 
@@ -17,54 +30,115 @@ library(zoo)
 library(clue)
 library(readxl)
 library(janitor)
+library(lubridate)
+library(inspectdf)
 
 ```
 
-## Dados
+# Dados
+
+```{r}
+
+types <- tibble(col_num = c(1:11),
+               type = "guess") %>% 
+  bind_rows(tibble(col_num = c(12:102),
+                   type = "text")) %>% pull(type)
+
+insper_raw <- read_excel("data/Insper.xlsx", col_types = types)
+
+```
+
+## Wrangling
+
+  A seguir, dos nomes das colunas são extraídas as escolas e o tema de cada pergunta, assim como suas respostas. Combinando a função `pivot_longer` com expressões regulares (regex) o processo é aplicado de forma que a tabela de saída esteja no formato tidy. Como existem 3 pessoas na base que não deram resposta para nenhuma pergunta, essas linhas serão desconsideradas na análise.
+
+```{r pressure, echo=FALSE}
+
+
+
+de_para <- tibble(melhor = c(1:8),
+                  melhor_escola = c("fei","poli","maua","insper",
+                              "usp_sc","mackenzie","ita","outra"))
+
+escolas <- de_para %>% pull(escola_ref)
+
+insper <- insper_raw %>%
+  filter(Finished != "0") %>% 
+  select(-Finished) %>% 
+  pivot_longer(cols = -c(1:11),
+               names_to = c("pergunta", "escola"),
+               names_pattern = '(\\w+|\\w+\\W|\\w+\\stecnico)(-\\w+)',
+               values_to = "resposta") %>%
+  clean_names() %>%
+  rename_with(., ~ str_extract(.,"_[a-zA-Z]+\\z"), starts_with("x")) %>% 
+  rename_with(., ~ str_remove(.,"_"), starts_with("_")) %>% 
+  rename(outra_qual = qual,
+         ref = cabeca) %>% #glimpse()
+  left_join(de_para, by = "melhor") %>% 
+  mutate(melhor_escola = if_else(is.na(melhor_escola), "outra", melhor_escola),
+         across(where(is.character), str_to_lower),
+         idade = as.numeric(str_extract(idade, "\\d+")),
+         #referencia = as.numeric(referencia),
+         pergunta = case_when(str_detect(pergunta, '_rio') ~ "infra",
+                              str_detect(pergunta, 'rio') ~ "custo",
+                              str_detect(pergunta, 'graduar') ~ "reconhecimento",
+                              str_detect(pergunta, 'academico') ~ "rigor",
+                              str_detect(pergunta, 'conhecimento') ~ "tecnica",
+                              str_detect(pergunta, 'do tecnico') ~  "multidisciplinar",
+                              TRUE ~ str_remove(pergunta, "\\W")),
+         escola = str_remove(escola,"-"),
+         escola = case_when(escola == "sao" ~ "usp_sc",
+                            is.na(escola) ~ "outra",
+                            TRUE ~ escola), 
+        ref = case_when(str_detect(ref, 'poli|usp') ~ "poli",
+                        str_detect(ref, 'outra') ~ outra_qual,
+                        is.na(ref) ~ "outra",
+                        str_detect(ref, 'insper') ~ "insper",
+                        TRUE ~ ref)) %>% glimpse
+
+insper %>% skim()
+
+```
 
 
 ```{r}
 
-insper_raw <- read_excel("data/Insper.xlsx", guess_max =  ) %>% glimpse
 
-?read_excel
-
-```
-
-### Wrangling
-
-1 – FEI
-2 – POLI 
-3 – MAUA
-4 – INSPER
-5 – USP SÃO CARLOS
-6 – MACKENZIE
-7 – ITA
-8 - OUTROS
-
-```{r pressure, echo=FALSE}
-
-insper <- insper_raw %>% 
-  pivot_longer(cols = -c(1:11),
-               names_to = c("question", "school"),
-               names_pattern = '(\\w+)(-\\w+)',
-               values_to = "answer",
-               values_transform = list("score" = as.character()))
-  clean_names() %>% glimpse()
+insper %>% select(ref) %>% distinct()
   
-  ?pivot_longer
+  insper_wide <- insper %>% 
+  select(escola, pergunta, resposta) %>% 
+    group_by(escola, pergunta) %>% 
+    summarise(resposta = mean(resposta, na.rm = T)) %>% 
+  pivot_wider(names_from = pergunta,
+              values_from = resposta) %>% glimpse
+  
+?pnorm
 
+#view(insper_wide)
+  
+  usethis::edit_r_environ()
 
 
 ```
-
-
-
 
 
 ## PCA
 
 ```{r}
+
+rec_pca <- recipe(resposta ~ ., insper) %>% 
+  update_role(contains('id'), new_role = 'id') %>% 
+  #step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
+  #step_other(categories, threshold = 0.005) %>% 
+  #step_other(postal_code, threshold = 0.01) %>% 
+  #step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_normalize(all_numeric(), -all_outcomes()) %>% 
+  step_pca(all_numeric(), -all_outcomes()) %>% 
+  step_naomit(all_numeric()) %>% 
+  prep()
+
+pca <- juice(rec_pca)
 
 
 ```
