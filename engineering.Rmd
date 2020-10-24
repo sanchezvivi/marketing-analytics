@@ -1,0 +1,71 @@
+---
+title: "Pesquisa Engenharia"
+author: "Viviane Sanchez"
+date: "10/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(skimr)
+library(ggrepel)
+library(factoextra)
+library(zoo)
+library(clue)
+library(readxl)
+library(janitor)
+
+```
+
+## Dados
+
+
+```{r}
+
+insper_raw <- read_excel("data/Insper.xlsx", guess_max =  ) %>% glimpse
+
+?read_excel
+
+```
+
+### Wrangling
+
+1 – FEI
+2 – POLI 
+3 – MAUA
+4 – INSPER
+5 – USP SÃO CARLOS
+6 – MACKENZIE
+7 – ITA
+8 - OUTROS
+
+```{r pressure, echo=FALSE}
+
+insper <- insper_raw %>% 
+  pivot_longer(cols = -c(1:11),
+               names_to = c("question", "school"),
+               names_pattern = '(\\w+)(-\\w+)',
+               values_to = "answer",
+               values_transform = list("score" = as.character()))
+  clean_names() %>% glimpse()
+  
+  ?pivot_longer
+
+
+
+```
+
+
+
+
+
+## PCA
+
+```{r}
+
+
+```
+
