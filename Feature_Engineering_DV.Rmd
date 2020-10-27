@@ -339,7 +339,7 @@ rec_pca <- recipe( ~., data = ft2) %>%
   step_pca(all_numeric(), - has_role('dummy')) %>% 
   prep()
 
-ft_pca<- juice(rec_pca) %>% 
+ft_pca <- juice(rec_pca) %>% 
   glimpse
 
 ```

@@ -32,6 +32,7 @@ library(readxl)
 library(janitor)
 library(lubridate)
 library(inspectdf)
+library(knitr)
 
 ```
 
@@ -56,11 +57,15 @@ insper_raw <- read_excel("data/Insper.xlsx", col_types = types)
 
 
 
-de_para <- tibble(melhor = c(1:8),
+de_para_escola <- tibble(melhor = c(1:8),
                   melhor_escola = c("fei","poli","maua","insper",
                               "usp_sc","mackenzie","ita","outra"))
 
-escolas <- de_para %>% pull(escola_ref)
+
+de_para_curso <- tibble(curso = c(1:3),
+                  nome_curso = c("a","b","c"))
+
+escolas <- de_para %>% pull(melhor_escola)
 
 insper <- insper_raw %>%
   filter(Finished != "0") %>% 
@@ -74,11 +79,13 @@ insper <- insper_raw %>%
   rename_with(., ~ str_remove(.,"_"), starts_with("_")) %>% 
   rename(outra_qual = qual,
          ref = cabeca) %>% #glimpse()
-  left_join(de_para, by = "melhor") %>% 
+  left_join(de_para_escola, by = "melhor") %>% 
+  left_join(de_para_curso, by = "curso") %>% 
   mutate(melhor_escola = if_else(is.na(melhor_escola), "outra", melhor_escola),
          across(where(is.character), str_to_lower),
          idade = as.numeric(str_extract(idade, "\\d+")),
-         #referencia = as.numeric(referencia),
+         resposta = if_else(resposta == "x", "0", resposta),
+         resposta = if_else(is.na(resposta), 0, as.numeric(resposta)),
          pergunta = case_when(str_detect(pergunta, '_rio') ~ "infra",
                               str_detect(pergunta, 'rio') ~ "custo",
                               str_detect(pergunta, 'graduar') ~ "reconhecimento",
@@ -96,6 +103,7 @@ insper <- insper_raw %>%
                         str_detect(ref, 'insper') ~ "insper",
                         TRUE ~ ref)) %>% glimpse
 
+
 insper %>% skim()
 
 ```
@@ -104,21 +112,23 @@ insper %>% skim()
 ```{r}
 
 
-insper %>% select(ref) %>% distinct()
+insper %>% select(resposta) %>% distinct()
   
-  insper_wide <- insper %>% 
+insper_prep <- insper %>% 
   select(escola, pergunta, resposta) %>% 
     group_by(escola, pergunta) %>% 
-    summarise(resposta = mean(resposta, na.rm = T)) %>% 
+    summarise(resposta = mean(resposta, na.rm = T))
+
+skim(insper_prep)
+  
+insper_wide <- insper_prep  %>% 
   pivot_wider(names_from = pergunta,
-              values_from = resposta) %>% glimpse
-  
-?pnorm
+              values_from = resposta) %>% 
+  mutate(tradicional = if_else(is.na(tradicional), 0, tradicional)) %>% 
+  ungroup()
 
-#view(insper_wide)
-  
-  usethis::edit_r_environ()
-
+insper_wide %>% 
+  kable()
 
 ```
 
@@ -127,19 +137,46 @@ insper %>% select(ref) %>% distinct()
 
 ```{r}
 
-rec_pca <- recipe(resposta ~ ., insper) %>% 
-  update_role(contains('id'), new_role = 'id') %>% 
-  #step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
-  #step_other(categories, threshold = 0.005) %>% 
-  #step_other(postal_code, threshold = 0.01) %>% 
-  #step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
-  step_normalize(all_numeric(), -all_outcomes()) %>% 
-  step_pca(all_numeric(), -all_outcomes()) %>% 
-  step_naomit(all_numeric()) %>% 
+rec_pca <- recipe(~ ., insper_wide) %>% 
+  step_normalize(all_numeric()) %>% 
+  step_pca(all_numeric()) %>% 
   prep()
 
 pca <- juice(rec_pca)
 
+
+tidy_pca <- tidy(rec_pca, 2)
+
+fviz_pca_biplot(tidy_pca)
+
+tidy_pca %>%
+  filter(component %in% paste0("PC", 1:6)) %>%
+  group_by(component) %>%
+  top_n(15, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = if_else(value > 0, 'Positiva','Negativa'))) +
+  geom_col(size = 0.5) +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  scale_fill_manual(values = c('#4E84C4', '#2d2017')) +
+  labs(x = "Valor absoluto da contribuição",
+       y = NULL, fill = "Contribuição")
+
+```
+
+
+```{r}
+
+pc_cr <- insper_wide %>% 
+  select(-escola) %>% 
+  prcomp(cor = TRUE)
+
+
+pc_cr$x
+
+
+fviz_pca_biplot(pc_cr, repel = TRUE)
 
 ```
 
