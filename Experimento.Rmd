@@ -109,5 +109,4 @@ H0 : Não existe associação entre as variáveis (grupos são semelhantes quant
 #labs(x = "Grupo", y = "Quantidade", fill = "Patrocinado?") +
 #n  stat_compare_means(method = "t.test")
 
-
 ```

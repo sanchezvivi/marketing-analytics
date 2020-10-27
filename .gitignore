@@ -26,4 +26,8 @@ vignettes/*.pdf
 *.knit.md
 # R Environment Variables
 .Renviron
+<<<<<<< HEAD
 .DS_Store
+=======
+data
+>>>>>>> 9dfc7dbabcf2156ceca142589fbadc0a75bd7db8
