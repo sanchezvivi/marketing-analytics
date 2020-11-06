@@ -1,6 +1,6 @@
 ---
 title: "Experimento"
-author: "Viviane Sanchez"
+author: "Guilherme Prado, Viviane Sanchez"
 date: "10/17/2020"
 output: html_document
 ---
@@ -44,6 +44,9 @@ exp_pivot <- exp %>%
   pivot_longer(cols = c(renda, escolaridade, est_civil, faixa_et),
                         names_to = "caract",
                         values_to = "grupo_caract")
+
+
+glimpse(exp_pivot)
 
 ```
 

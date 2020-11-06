@@ -1,11 +1,21 @@
 ---
 title: "Pesquisa Engenharia"
-subtitle: "Marketing Analytics"
+subtitle: "Insper - Programa Avançado em Data Science - Marketing Analytics"
 author: "Viviane Sanchez"
-institution: "Insper - PADS"
 date: "10/23/2020"
 output: html_document
 ---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, 
+                      fig.retina = 2 ,fig.height=5, fig.width=10)
+
+#rmarkdown::render("Feature_Engineering_DV.Rmd", envir=.GlobalEnv)
+
+```
+
+
 # Introdução
 
 ## Objetivo
@@ -18,7 +28,7 @@ Avalie o posicionamento da Faculdade de Engenharia do Insper, incluindo:
 3. Como os concorrentes são percebidos (segundo os atributos).
 4. Quais os territórios de cada faculdade.
 
-```{r setup, include=FALSE}
+```{r eval = TRUE, tidy = FALSE}
 
 library(tidyverse)
 library(tidymodels)
@@ -53,9 +63,7 @@ insper_raw <- read_excel("data/Insper.xlsx", col_types = types)
 
   A seguir, dos nomes das colunas são extraídas as escolas e o tema de cada pergunta, assim como suas respostas. Combinando a função `pivot_longer` com expressões regulares (regex) o processo é aplicado de forma que a tabela de saída esteja no formato tidy. Como existem 3 pessoas na base que não deram resposta para nenhuma pergunta, essas linhas serão desconsideradas na análise.
 
-```{r pressure, echo=FALSE}
-
-
+```{r}
 
 de_para_escola <- tibble(melhor = c(1:8),
                   melhor_escola = c("fei","poli","maua","insper",
@@ -104,15 +112,15 @@ insper <- insper_raw %>%
                         TRUE ~ ref)) %>% glimpse
 
 
-insper %>% skim()
+#insper %>% skim()
 
 ```
 
+A seguir obtemos a matriz necessária para a  construção do mapa perceptual:
 
 ```{r}
 
-
-insper %>% select(resposta) %>% distinct()
+#insper %>% select(resposta) %>% distinct()
   
 insper_prep <- insper %>% 
   select(escola, pergunta, resposta) %>% 
@@ -125,59 +133,55 @@ insper_wide <- insper_prep  %>%
   pivot_wider(names_from = pergunta,
               values_from = resposta) %>% 
   mutate(tradicional = if_else(is.na(tradicional), 0, tradicional)) %>% 
-  ungroup()
+  ungroup() %>% 
+  column_to_rownames(., var = "escola")
 
 insper_wide %>% 
   kable()
 
 ```
 
-
 ## PCA
+Aplicando uma análise componentes principais, obtém-se os seguintes valores de cargas.
 
 ```{r}
 
-rec_pca <- recipe(~ ., insper_wide) %>% 
-  step_normalize(all_numeric()) %>% 
-  step_pca(all_numeric()) %>% 
-  prep()
+insper_pca <- insper_wide %>% 
+  prcomp()
 
-pca <- juice(rec_pca)
-
-
-tidy_pca <- tidy(rec_pca, 2)
-
-fviz_pca_biplot(tidy_pca)
-
-tidy_pca %>%
-  filter(component %in% paste0("PC", 1:6)) %>%
-  group_by(component) %>%
-  top_n(15, abs(value)) %>%
-  ungroup() %>%
-  mutate(terms = reorder_within(terms, abs(value), component)) %>%
-  ggplot(aes(abs(value), terms, fill = if_else(value > 0, 'Positiva','Negativa'))) +
-  geom_col(size = 0.5) +
-  facet_wrap(~component, scales = "free_y") +
-  scale_y_reordered() +
-  scale_fill_manual(values = c('#4E84C4', '#2d2017')) +
-  labs(x = "Valor absoluto da contribuição",
-       y = NULL, fill = "Contribuição")
+insper_pca$x %>% kable()
 
 ```
 
 
 ```{r}
 
-pc_cr <- insper_wide %>% 
-  select(-escola) %>% 
-  prcomp(cor = TRUE)
-
-
-pc_cr$x
-
-
-fviz_pca_biplot(pc_cr, repel = TRUE)
+fviz_eig(insper_pca, addlabels = TRUE) + 
+  labs(x = "Componente Principal",
+       y = "Percentual explicado da variância")
 
 ```
 
+E a seguir, o mapa perceptual:
+
+```{r}
+fviz_pca_biplot(insper_pca, repel = T) +
+  labs(title = "Mapa Perceptual")
+
+```
+
+Nota-se que o Insper 
+
+Avalie o posicionamento da Faculdade de Engenharia do Insper, incluindo:
+1. Elementos centrais da proposta de valor que são reconhecidos pelos consumidores.
+2. Quais são os concorrentes.
+3. Como os concorrentes são percebidos (segundo os atributos).
+4. Quais os territórios de cada faculdade
+
+
+# Referências
+
+- Material de aula da matéria Marketing Analytics
+- 
+[](https://allisonhorst.github.io/palmerpenguins/articles/articles/pca.html)
 

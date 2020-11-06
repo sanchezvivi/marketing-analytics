@@ -1,0 +1,243 @@
+---
+title: "Experimento com Matéria Patrocinada"
+subtitle: "Insper - Programa Avançado em Data Science - Marketing Analytics"
+author: "Guilherme Nogueira e Viviane Sanchez"
+date: "10/17/2020 - 10/01/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, 
+                      fig.retina = 2 ,fig.height=5, fig.width=10)
+
+#rmarkdown::render("Feature_Engineering_DV.Rmd", envir=.GlobalEnv)
+
+```
+
+
+# 1. Introdução
+
+O objetivo desta análise é avaliar a influência do patrocínio de matérias. Através de métodos inferenciais estatísticos serão avaliados os seguintes itens:
+
+-   Diferença entre características dos consumidores
+-   Credibilidade da pessoa patrocinada para fazer a matéria (A)
+-   Atitude em relação à marca patrocinada (B)
+-   Impacto em pessoas mais envolvidas com a marca (C)
+
+## 1.1. Pacotes
+
+```{r eval = TRUE, tidy = FALSE}
+
+library(tidyverse)
+library(moments)
+library(DescTools)
+library(skimr)
+library(lubridate)
+library(janitor)
+library(ggpubr)
+library(ggpmisc)
+library(psych)
+library(ggpubr)
+library(factoextra)
+library(devtools)
+library(factoextra)
+
+today <- Sys.Date()
+
+theme_set(theme_minimal())
+theme_update(plot.title = element_text(face = "bold", size = 16))
+
+```
+
+# 2. Dados
+
+Após a leitura da base de dados, as variáveis de características são transformadas no formato tidy com `pivot_longer` para as colunas `grupo_caract` e `caract`.
+
+```{r warning=FALSE}
+
+load("data/experimento_mat.RData")
+
+skim(experimento_mat)
+
+exp_raw <- experimento_mat %>% 
+  as_tibble() %>% 
+  clean_names() %>% 
+  na.omit()
+
+exp <- exp_raw %>% 
+  mutate(idade = year(today) - ano_nascto,
+         faixa_et = as_factor(ntile(idade, 5)))
+
+exp_pivot <- exp %>% 
+  pivot_longer(cols = c(renda, escolaridade, est_civil, faixa_et),
+                        names_to = "caract",
+                        values_to = "grupo_caract")
+
+```
+
+# 3. Análise
+
+## 3.1 Diferenças entre características
+
+Para melhor entender as diferenças entre as carcaterísticas, será aplicado o teste qui-quadrado.
+
+```{r fig.align="center", fig.width=10, warning=FALSE}
+
+p_est <- exp %>% 
+  tabyl(est_civil, iv_materia_patr) %>% 
+  chisq.test()
+
+p_esc <- exp %>% 
+  tabyl(escolaridade, iv_materia_patr) %>% 
+  chisq.test()
+
+p_renda <- exp %>% 
+  tabyl(renda, iv_materia_patr) %>% 
+  chisq.test()
+
+p_idade <- exp %>% 
+  tabyl(faixa_et, iv_materia_patr) %>% 
+  chisq.test()
+
+p_values <- tibble(
+  label = c(p_esc$p.value, p_est$p.value, p_renda$p.value, p_idade$p.value),
+  caract   = c("escolaridade", "est_civil", "renda", "faixa_et"),
+  x = c("4", "3", "4", "3"),
+  y = 50,
+  iv_materia_patr = 0)
+
+exp_pivot %>% 
+  group_by(caract, grupo_caract, iv_materia_patr) %>% 
+  count() %>% 
+  ggplot(aes(grupo_caract, n, fill = if_else(iv_materia_patr == 0, "Não", "Sim"))) +
+  geom_col(position = "dodge") +
+  facet_wrap(~caract, scales = "free_x") +
+  theme(legend.position = "bottom") +
+  labs(title = "Diferença entre características",
+       x = "Grupo", y = "Quantidade", fill = "Patrocinado?") +
+  geom_text(data = p_values,
+            mapping = aes(x = x, y = y, 
+                          label = paste("p-valor:",
+                                        round(label, 4))))
+
+```
+
+Considerando os p-valores do teste qui-quadrado para cada grupo, não é possível afirmar que existe uma diferença entre eles.
+
+## 3.2. Verificação de Hipóteses
+
+### 3.2.1. Hipótese A
+
+Será verificada a validade da seguinte hipótese:
+
+- O fato da matéria ser patrocinada (A) diminui a credibilidade da blogueira.
+
+```{r fig.align="center", fig.width=7}
+
+exp_pivot <- exp_pivot %>% mutate(delta_cred = cred_t2-cred_t1)
+
+
+anova_hip_a_cred <- exp_pivot %>% 
+  aov(delta_cred ~ iv_materia_patr, data = .)
+
+summary(anova_hip_a_cred)
+
+
+ggplot(exp_pivot, aes(y = delta_cred, 
+                      x = if_else(iv_materia_patr == 0, 
+                                                  "Não", "Sim"))) +
+  geom_boxplot() +
+  geom_jitter(shape = 15,
+              color = "steelblue",
+              position = position_jitter(0.21)) +
+  labs(title = "Credibilidade da pessoa patrocinada", y = "Delta Credibilidadea",
+       x = "Matéria Patrocinada?")
+
+barplot(tapply(exp_pivot$delta_cred,exp_pivot$iv_materia_patr, mean))
+
+
+```
+
+Com base no teste da ANOVA podemos ver que existe uma queda na credibilidade do digital influencer quando este realiza uma matéria patrocinada.
+
+### 3.2.2. Hipótese B
+
+Será verificada a validade da seguinte hipótese:
+
+-   O fato da matéria ser patrocinada diminui a atitude com relação à marca que patrocinou.
+
+```{r fig.align="center", fig.width=7}
+
+exp_pivot <- exp_pivot %>% 
+  mutate(delta_atit = atit_t2-atit_t1)
+
+
+anova_hip_b_atit <- exp_pivot %>% 
+  aov(delta_atit ~ iv_materia_patr, data = .)
+
+summary(anova_hip_b_atit)
+
+
+ggplot(exp_pivot, aes(y = delta_atit, x = if_else(iv_materia_patr == 0, 
+                                                  "Não", "Sim"))) +
+  geom_boxplot() +
+  geom_jitter(shape = 15,
+              color = "steelblue",
+              position = position_jitter(0.21)) +
+   labs(title = "Atitude em relação à marca", y = "Delta Credibilidade",
+       x = "Matéria Patrocinada?")
+
+
+barplot(tapply(exp_pivot$delta_atit,exp_pivot$iv_materia_patr, mean))
+
+```
+
+Com base no teste da ANOVA observa-se uma queda na atitude com relação à marca quando esta realiza uma matéria patrocinada.
+
+### 3.2.3. Hipótese C
+
+Será verificada a validade da seguinte hipótese:
+
+-   Pessoas mais envolvidas com o produto são menos afetadas por esse tipo de matéria.
+
+```{r fig.align="center", fig.width=7}
+
+exp_pivot_patr <- exp_pivot %>% 
+  filter(iv_materia_patr == 1)
+
+exp_pivot_patr <- exp_pivot_patr %>% 
+  mutate(envolvimento_grupo = case_when(
+            envolvimento <= 4 ~ 'baixo envolvimento',
+            envolvimento > 4  ~ 'alto envolvimento'
+))
+
+
+anova_hip_c_atit_env <- exp_pivot_patr %>% 
+  aov( delta_atit ~ envolvimento_grupo, data = .)
+
+summary(anova_hip_c_atit_env)
+
+
+ggplot(exp_pivot_patr, aes(y = delta_atit, x = envolvimento_grupo)) +
+  geom_boxplot() +
+  geom_jitter(shape = 15,
+              color = "steelblue",
+              position = position_jitter(0.21)) +
+  labs(title = "Envolvimento com o produto", y = "Delta Credibilidade",
+       x = "Matéria Patrocinada?")
+
+barplot(tapply(exp_pivot_patr$delta_atit,exp_pivot_patr$envolvimento_grupo,mean))
+
+pairwise.t.test(exp_pivot_patr$delta_atit,
+                exp_pivot_patr$envolvimento_grupo,
+                data = exp_pivot_patr,
+                p.adjust.method = "bonferroni")
+
+```
+
+Com base nesta quebra de envolvimento não há significância estatística para diferenciar o impacto na atitude entre os grupos com maior e menor envolvimento para uma matéria patrocinada.
+
+# 4. Referências
+
+-   Material de aula do curso Marketing Analytics
