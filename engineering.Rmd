@@ -1,8 +1,8 @@
 ---
-title: "Pesquisa Engenharia"
+title: "Pesquisa Faculdade de Engenharia"
 subtitle: "Insper - Programa Avançado em Data Science - Marketing Analytics"
 author: "Viviane Sanchez"
-date: "10/23/2020"
+date: "10/23/2020 - 11/07/2020"
 output: html_document
 ---
 
@@ -15,18 +15,13 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE,
 
 ```
 
-
 # Introdução
 
 ## Objetivo
 
 Avaliar o posicionamento da Faculdade de Engenharia do Insper a partir da pesquisa realizada.
 
-Avalie o posicionamento da Faculdade de Engenharia do Insper, incluindo:
-1. Elementos centrais da proposta de valor que são reconhecidos pelos consumidores.
-2. Quais são os concorrentes.
-3. Como os concorrentes são percebidos (segundo os atributos).
-4. Quais os territórios de cada faculdade.
+## Pacotes
 
 ```{r eval = TRUE, tidy = FALSE}
 
@@ -44,9 +39,17 @@ library(lubridate)
 library(inspectdf)
 library(knitr)
 
+theme_set(theme_minimal())
+theme_update(text = element_text(family = "Open Sans", size = 12),
+             plot.title = element_text(face = "bold", size = 18,
+                                       color = "#1d3752"),
+             legend.position = "bottom")
+
 ```
 
 # Dados
+
+Para facilitar a manipulação dos dados, os tipos das variáveis presentes em cada coluna foram definidos conforme abaixo:
 
 ```{r}
 
@@ -59,19 +62,15 @@ insper_raw <- read_excel("data/Insper.xlsx", col_types = types)
 
 ```
 
-## Wrangling
+## Pré-processamento
 
-  A seguir, dos nomes das colunas são extraídas as escolas e o tema de cada pergunta, assim como suas respostas. Combinando a função `pivot_longer` com expressões regulares (regex) o processo é aplicado de forma que a tabela de saída esteja no formato tidy. Como existem 3 pessoas na base que não deram resposta para nenhuma pergunta, essas linhas serão desconsideradas na análise.
+  A seguir, dos nomes das colunas são extraídas as escolas e o tema de cada pergunta, assim como suas respostas. Combinando a função `pivot_longer` com expressões regulares (`regex`) o processo é aplicado de forma que a tabela de saída esteja no formato tidy. Como existem 3 pessoas na base que não deram resposta para nenhuma pergunta, essas linhas serão desconsideradas na análise.
 
 ```{r}
 
-de_para_escola <- tibble(melhor = c(1:8),
+de_para <- tibble(melhor = c(1:8),
                   melhor_escola = c("fei","poli","maua","insper",
                               "usp_sc","mackenzie","ita","outra"))
-
-
-de_para_curso <- tibble(curso = c(1:3),
-                  nome_curso = c("a","b","c"))
 
 escolas <- de_para %>% pull(melhor_escola)
 
@@ -84,11 +83,10 @@ insper <- insper_raw %>%
                values_to = "resposta") %>%
   clean_names() %>%
   rename_with(., ~ str_extract(.,"_[a-zA-Z]+\\z"), starts_with("x")) %>% 
-  rename_with(., ~ str_remove(.,"_"), starts_with("_")) %>% 
+  rename_with(., ~ str_remove(.,"_"), starts_with("_")) %>%
   rename(outra_qual = qual,
          ref = cabeca) %>% #glimpse()
-  left_join(de_para_escola, by = "melhor") %>% 
-  left_join(de_para_curso, by = "curso") %>% 
+  left_join(de_para, by = "melhor") %>% 
   mutate(melhor_escola = if_else(is.na(melhor_escola), "outra", melhor_escola),
          across(where(is.character), str_to_lower),
          idade = as.numeric(str_extract(idade, "\\d+")),
@@ -102,7 +100,7 @@ insper <- insper_raw %>%
                               str_detect(pergunta, 'do tecnico') ~  "multidisciplinar",
                               TRUE ~ str_remove(pergunta, "\\W")),
          escola = str_remove(escola,"-"),
-         escola = case_when(escola == "sao" ~ "usp_sc",
+         escola = case_when(escola == "sao" ~ "usp",
                             is.na(escola) ~ "outra",
                             TRUE ~ escola), 
         ref = case_when(str_detect(ref, 'poli|usp') ~ "poli",
@@ -110,24 +108,16 @@ insper <- insper_raw %>%
                         is.na(ref) ~ "outra",
                         str_detect(ref, 'insper') ~ "insper",
                         TRUE ~ ref)) %>% glimpse
-
-
-#insper %>% skim()
-
 ```
 
-A seguir obtemos a matriz necessária para a  construção do mapa perceptual:
+A seguir obtém-se a matriz necessária para a construção do mapa perceptual. É calculada a média aritmética de cada atributo (resposta) para cada escola.
 
 ```{r}
-
-#insper %>% select(resposta) %>% distinct()
   
 insper_prep <- insper %>% 
   select(escola, pergunta, resposta) %>% 
     group_by(escola, pergunta) %>% 
     summarise(resposta = mean(resposta, na.rm = T))
-
-skim(insper_prep)
   
 insper_wide <- insper_prep  %>% 
   pivot_wider(names_from = pergunta,
@@ -137,51 +127,104 @@ insper_wide <- insper_prep  %>%
   column_to_rownames(., var = "escola")
 
 insper_wide %>% 
-  kable()
+  kable(digits = 2, align = "c")
+
+?kable
 
 ```
 
+
 ## PCA
-Aplicando uma análise componentes principais, obtém-se os seguintes valores de cargas.
+
+Aplica-se então uma análise componentes principais.Observa-se que as 3 primeiras componentes explicam a variabilidade de 97,4% dos dados.
 
 ```{r}
 
 insper_pca <- insper_wide %>% 
   prcomp()
 
-insper_pca$x %>% kable()
-
-```
-
-
-```{r}
-
 fviz_eig(insper_pca, addlabels = TRUE) + 
   labs(x = "Componente Principal",
-       y = "Percentual explicado da variância")
+       y = "Percentual explicado da variância",
+       title = "Contribuição de cada componente") +
+  theme(plot.title = element_text(face = "bold", size = 18,
+                                       color = "#1d3752"))
 
 ```
 
-E a seguir, o mapa perceptual:
+Ao olhar mais de perto a contribuição de cada atributo, pode-se dizer que as 3 primeiras componentes são drivers de  *tradição*, *preferência* e *skills* respectivamente. Importante ressaltar que quando as contribuições são negativas, quanto maior o valor em módulo, mais distante a escola está daquele atributo.
+
 
 ```{r}
-fviz_pca_biplot(insper_pca, repel = T) +
-  labs(title = "Mapa Perceptual")
+
+as_tibble(insper_pca$rotation) %>% 
+  mutate(terms = rownames(insper_pca$rotation)) %>% 
+  pivot_longer(cols = PC1:PC7,
+               names_to = "component",
+               values_to = "value") %>% 
+  filter(component %in% paste0("PC", 1:3)) %>% 
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  scale_fill_manual(values = c("grey", "#4E84C4")) +
+  labs(title = "Contribuição de cada atributo",
+    x = "Valor absoluto da contribuição",
+    y = NULL, fill = "Contrbuição > 0?")
+
 
 ```
 
-Nota-se que o Insper 
+Pelo mapa perceptual é possível consolidar todas as informações mostradas anteriormente:
 
-Avalie o posicionamento da Faculdade de Engenharia do Insper, incluindo:
-1. Elementos centrais da proposta de valor que são reconhecidos pelos consumidores.
-2. Quais são os concorrentes.
-3. Como os concorrentes são percebidos (segundo os atributos).
-4. Quais os territórios de cada faculdade
+```{r}
 
+fviz_pca_biplot(insper_pca, repel = T) +
+  labs(title = "Mapa Perceptual") +
+  theme(plot.title = element_text(face = "bold", size = 18,
+                                       color = "#1d3752"))
+
+```
+
+
+Nota-se que o Insper está posicionado de forma isolada, na direção de habilidades como empreendedorismo, inovação, infraestrutura e networking. No entanto, está isolado, sem concorrentes diretos na percepção dos respondentes da pesquisa. ITA e POLI são vistas como as escolas mais tradicionais e com maior reconhecimento. Mauá, FEI e Mackenzie estão em sentidos opostos.
+
+Outra forma de visualizar o território de cada faculdade é através do score médio nos principais drivers (Fernandez, et al.):
+
+```{r}
+
+z <- insper_pca$x[, 1:3]
+
+tibble(escola = rownames(insper_wide)) %>%
+        bind_cols(as_tibble(z)) %>% 
+  group_by(escola) %>%
+  summarise_all(mean) %>%
+  pivot_longer(cols = starts_with("PC"), names_to = "driver", values_to = "score_medio") %>% 
+  mutate(score_medio = if_else(driver == "PC2", -score_medio, score_medio)) %>% 
+  ggplot(aes(x = driver, y = score_medio, group = escola, color = escola,
+             label = ifelse(driver == "PC1", escola, ""))) +
+  geom_line(size = 1, alpha = 0.55) +
+  geom_point(size = 2) +
+  labs(x = "", y = "Score Médio", title = "Posicionamento das Faculdades de Engenharia") +
+  geom_label_repel(direction = "both") +
+  scale_x_discrete(labels = c("tradição", "preferência", "skills")) +
+  theme(legend.position = "none")
+
+
+```
+
+ITA, Poli e USP São Carlos possuem os maiores socres em tradição, enquanto Mauá e Mackenzie se destacam no desenvolvimento de habilidades interpessoais (skills), o que não ficou claro pelo mapa, pois considera apenas os dois principais drivers. O Insper lidera a pesquisa no quesito preferência e é também reconhecido por essas habilidades.
+
+# Conclusão
+
+O mapa perceptual, criado a partir da análise de componentes principais, é uma ferramenta poderosa para avaliar o posicionamento de marcas a partir de uma pesquisa. Através da pesquisa conduzida, pode-se dizer que a faculdade de engenharia Insper se diferencia no mercado pelo desenvolvimento de habilidades interpessoais e é a preferida dentre os entrevistados.
 
 # Referências
 
 - Material de aula da matéria Marketing Analytics
-- 
-[](https://allisonhorst.github.io/palmerpenguins/articles/articles/pca.html)
+- Material de aula da matéria Modelagem Preditiva Avançada
+- University of Virginia - Wilcox, R. Methods for producing Perceptual Maps from Data
+- Fernandez, P., et al, Data Science, Marketing e Business
+- [PCA with penguins and recipes](https://allisonhorst.github.io/palmerpenguins/articles/articles/pca.html)
 
